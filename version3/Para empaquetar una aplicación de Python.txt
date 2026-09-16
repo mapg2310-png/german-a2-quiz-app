@@ -1,0 +1,50 @@
+Para empaquetar una aplicación de Python con PyQt6 y convertirla en un archivo ejecutable (`.exe`) que puedas llevar a cualquier otro ordenador sin necesidad de instalar Python, el estándar de la industria y la herramienta más utilizada es **PyInstaller**.
+
+Como tu aplicación lee un archivo externo (`vocabulario.json`), lo ideal es generar el ejecutable de forma que el JSON viaje junto al `.exe` (o esté en la misma carpeta), permitiéndote seguir añadiendo palabras fácilmente en el futuro sin recompilar nada.
+
+Aquí tienes el paso a paso exacto para hacerlo en pocos minutos:
+
+### Paso 1: Instalar PyInstaller
+
+Si no lo tienes instalado todavía, abre tu terminal y ejecuta:
+
+```cmd
+pip install pyinstaller
+
+```
+
+### Paso 2: Generar el archivo ejecutable
+
+1. Ve a la carpeta de tu proyecto en la terminal:
+```cmd
+cd C:\Users\marce\Desktop\MARCELO\PY6QT6
+
+```
+
+
+2. Ejecuta el comando de empaquetado. Usaremos dos parámetros clave para que quede profesional:
+```cmd
+pyinstaller --noconsole --onefile main.py
+
+```
+
+
+* `--onefile`: Junta todo (Python y librerías de PyQt6) en **un solo archivo `.exe**` limpio.
+* `--noconsole`: Oculta la típica ventana negra de comandos de fondo para que la aplicación parezca una app de escritorio nativa y limpia.
+
+
+
+### Paso 3: Organizar la carpeta de distribución
+
+Una vez que termine el proceso (tardará unos segundos), verás que en tu carpeta han aparecido varias carpetas nuevas (`build`, `dist`) y un archivo `main.spec`.
+
+1. Entra en la carpeta **`dist`**. Dentro estará tu archivo **`main.exe`** (puedes renombrarlo a `QuizAleman.exe`).
+2. **Muy importante:** Copia tu archivo **`vocabulario.json`** y pégalo **exactamente en la misma carpeta donde esté el `main.exe**`.
+
+Como en tu código actual buscas el JSON de forma relativa (`ruta_json = 'vocabulario.json'`), el programa buscará el archivo en la misma ruta donde se esté ejecutando el `.exe`.
+
+### ¿Cómo llevarlo a otro dispositivo?
+
+Para pasárselo a otra persona o probarlo en otro ordenador, solo tienes que comprimir en un archivo `.zip` la carpeta que contiene el `.exe` junto con su `vocabulario.json` (o pasarlo en un pendrive). Al abrirlo en el otro equipo, funcionará de inmediato con sus 10 preguntas y su temporizador.
+
+¿Te atreves a probar a generar tu primer `.exe` y me cuentas si te arranca a la primera?

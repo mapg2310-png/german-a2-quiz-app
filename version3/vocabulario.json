@@ -1,0 +1,22 @@
+[
+  {
+    "frase": "Ich ____ gestern ein Buch gelesen.",
+    "respuesta": "habe",
+    "pista": "Verbo auxiliar (Perfekt)"
+  },
+  {
+    "frase": "Er ____ morgen nach Berlin fahren.",
+    "respuesta": "will",
+    "pista": "Verbo modal (querer/tener intención)"
+  },
+  {
+    "frase": "Wir ____ am Wochenende Fußball spielen.",
+    "respuesta": "wollen",
+    "pista": "Verbo modal (nosotros)"
+  },
+  {
+    "frase": "Das Auto ist schneller ____ das Fahrrad.",
+    "respuesta": "als",
+    "pista": "Comparativo (más... que)"
+  }
+]

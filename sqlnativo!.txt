@@ -1,0 +1,286 @@
+¡Ese es el siguiente nivel natural! Pasar de un archivo JSON estático a una base de datos **SQLite** le da a tu aplicación estructura de software profesional.
+
+Con SQLite conseguiremos dos cosas clave:
+
+1. **Persistencia y escalabilidad:** Guardaremos las preguntas, respuestas y pistas en una tabla dentro de un archivo local (`vocabulario.db`).
+2. **Estadísticas de aprendizaje reales:** Podremos registrar cuántas veces aciertas o fallas cada palabra para que el programa pueda priorizar en futuras rondas aquellas preguntas que peor se te dan (un sistema clásico de tarjetas de repaso inteligente o *spaced repetition*).
+
+---
+
+### ¿Cómo vamos a estructurar esta versión con SQLite?
+
+1. **Creación automática de la BD:** Si el archivo `vocabulario.db` no existe al arrancar la app, el script creará la tabla automáticamente y le inyectará unas cuantas preguntas iniciales de prueba para que funcione desde el primer segundo.
+2. **Consultas SQL limpias:** Cambiaremos el `json.load()` por una consulta `SELECT` aleatoria usando SQLite (`ORDER BY RANDOM() LIMIT 1`).
+
+---
+
+### Código actualizado para la Versión con SQLite (`main.py`)
+
+Reemplaza todo el contenido de tu `main.py` por este código. Ya no necesitarás el archivo `vocabulario.json` (aunque puedes conservar tu chuleta de antes), porque la propia aplicación gestionará su base de datos local:
+
+```python
+import sys
+import sqlite3
+import random
+from PyQt6 import QtWidgets, QtCore
+from PyQt6.QtCore import QTimer
+
+class QuizAleman(QtWidgets.QMainWindow):
+    def __init__(self):
+        super(QuizAleman, self).__init__()
+        
+        self.setWindowTitle("Quiz de Alemán A2 - SQLite Edition")
+        self.resize(500, 420)
+        
+        self.widget_central = QtWidgets.QWidget(self)
+        self.setCentralWidget(self.widget_central)
+        self.layout = QtWidgets.QVBoxLayout(self.widget_central)
+        self.layout.setContentsMargins(30, 30, 30, 30)
+        self.layout.setSpacing(12)
+        
+        # Cabecera: Progreso y Tiempo
+        self.layout_top = QtWidgets.QHBoxLayout()
+        self.label_progreso = QtWidgets.QLabel("Pregunta 1 de 10")
+        self.label_progreso.setStyleSheet("font-size: 12px; color: gray; font-weight: bold;")
+        
+        self.label_tiempo = QtWidgets.QLabel("⏱️ Tiempo: 15s")
+        self.label_tiempo.setStyleSheet("font-size: 13px; color: #d9534f; font-weight: bold;")
+        self.label_tiempo.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+        
+        self.layout_top.addWidget(self.label_progreso)
+        self.layout_top.addWidget(self.label_tiempo)
+        self.layout.addLayout(self.layout_top)
+        
+        # 1. Frase principal
+        self.label = QtWidgets.QLabel("Cargando pregunta...")
+        self.label.setStyleSheet("font-size: 16px; font-weight: bold;")
+        self.label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.layout.addWidget(self.label)
+        
+        # 2. Caja de texto
+        self.lineEdit = QtWidgets.QLineEdit()
+        self.lineEdit.setStyleSheet("font-size: 14px; padding: 6px;")
+        self.lineEdit.setPlaceholderText("Escribe tu respuesta aquí...")
+        self.layout.addWidget(self.lineEdit)
+        
+        # 3. Botón Comprobar
+        self.pushButton = QtWidgets.QPushButton("Comprobar")
+        self.pushButton.setStyleSheet("font-size: 14px; padding: 6px; background-color: #0078d7; color: white; font-weight: bold;")
+        self.layout.addWidget(self.pushButton)
+        
+        # Botones de fin de partida (Ocultos al iniciar)
+        self.layout_fin = QtWidgets.QHBoxLayout()
+        
+        self.btn_reiniciar = QtWidgets.QPushButton("🔄 Repetir partida")
+        self.btn_reiniciar.setStyleSheet("font-size: 14px; padding: 8px; background-color: #5cb85c; color: white; font-weight: bold;")
+        self.btn_reiniciar.clicked.connect(self.reiniciar_partida)
+        
+        self.btn_cerrar = QtWidgets.QPushButton("❌ Cerrar aplicación")
+        self.btn_cerrar.setStyleSheet("font-size: 14px; padding: 8px; background-color: #d9534f; color: white; font-weight: bold;")
+        self.btn_cerrar.clicked.connect(self.close)
+        
+        self.layout_fin.addWidget(self.btn_reiniciar)
+        self.layout_fin.addWidget(self.btn_cerrar)
+        
+        self.layout.addLayout(self.layout_fin)
+        self.btn_reiniciar.hide()
+        self.btn_cerrar.hide()
+        
+        # 4. Feedback
+        self.label_2 = QtWidgets.QLabel("")
+        self.label_2.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.label_2.setStyleSheet("font-size: 14px;")
+        self.layout.addWidget(self.label_2)
+        
+        # 5. Marcadores
+        self.layout_marcadores = QtWidgets.QHBoxLayout()
+        self.label_aciertos = QtWidgets.QLabel("Richtig: 0")
+        self.label_aciertos.setStyleSheet("font-size: 14px; color: green; font-weight: bold;")
+        self.label_fallos = QtWidgets.QLabel("Falsch: 0")
+        self.label_fallos.setStyleSheet("font-size: 14px; color: red; font-weight: bold;")
+        
+        self.layout_marcadores.addWidget(self.label_aciertos)
+        self.layout_marcadores.addWidget(self.label_fallos)
+        self.layout.addLayout(self.layout_marcadores)
+        
+        # Variables de control
+        self.aciertos = 0
+        self.fallos = 0
+        self.pregunta_actual = None # Tupla: (id, frase, respuesta, pista)
+        self.ronda_actual = 0
+        self.MAX_PREGUNTAS = 10
+        
+        # Temporizador
+        self.tiempo_restante = 15
+        self.timer_cuenta_atras = QTimer(self)
+        self.timer_cuenta_atras.timeout.connect(self.actualizar_tiempo)
+        
+        # Inicializar Base de Datos SQLite
+        self.inicializar_base_datos()
+        
+        self.pushButton.clicked.connect(self.verificar_respuesta)
+        self.lineEdit.returnPressed.connect(self.verificar_respuesta)
+        
+        self.cargar_nueva_pregunta()
+
+    def inicializar_base_datos(self):
+        # Conecta (o crea si no existe) el archivo de base de datos local
+        self.conexion = sqlite3.connect("vocabulario.db")
+        self.cursor = self.conexion.cursor()
+        
+        # Crear la tabla si no existe
+        self.cursor.execute("""
+            CREATE TABLE IF NOT EXISTS vocabulario (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                frase TEXT NOT NULL,
+                respuesta TEXT NOT NULL,
+                pista TEXT
+            )
+        """)
+        self.conexion.commit()
+        
+        # Comprobar si la tabla está vacía para insertar datos iniciales de prueba
+        self.cursor.execute("SELECT COUNT(*) FROM vocabulario")
+        count = self.cursor.fetchone()[0]
+        
+        if count == 0:
+            datos_iniciales = [
+                ("Ich ____ gestern ein Buch gelesen.", "habe", "Verbo auxiliar (Perfekt)"),
+                ("Er ____ morgen nach Berlin fahren.", "will", "Verbo modal (querer)"),
+                ("Wir ____ am Wochenende Fußball spielen.", "wollen", "Verbo modal (nosotros)"),
+                ("Das Auto ist schneller ____ das Fahrrad.", "als", "Comparativo (más... que)"),
+                ("Ich habe keinen Hunger, ____ ich habe Durst.", "sondern", "Conjunción adversativa"),
+                ("____ du mir bitte helfen?", "Können", "Verbo modal de cortesía (tú)"),
+                ("Sie geht in ____ Supermarkt.", "den", "Artículo en acusativo (masculino)"),
+                ("Das Buch liegt ____ dem Tisch.", "auf", "Preposición de lugar (sobre con dativo)"),
+                ("Wann bist du in Köln ____?", "angekommen", "Participio del verbo ankommen"),
+                ("Er fährt ohne ____ Auto in den Urlaub.", "sein", "Posesivo en acusativo")
+            ]
+            self.cursor.executemany("INSERT INTO vocabulario (frase, respuesta, pista) VALUES (?, ?, ?)", datos_iniciales)
+            self.conexion.commit()
+
+    def actualizar_marcadores(self):
+        self.label_aciertos.setText(f"Richtig: {self.aciertos}")
+        self.label_fallos.setText(f"Falsch: {self.fallos}")
+
+    def cargar_nueva_pregunta(self):
+        if self.ronda_actual >= self.MAX_PREGUNTAS:
+            self.mostrar_fin_partida()
+            return
+            
+        self.ronda_actual += 1
+        self.label_progreso.setText(f"Pregunta {self.ronda_actual} de {self.MAX_PREGUNTAS}")
+        
+        # Consulta SQL para extraer una pregunta aleatoria directamente de SQLite
+        self.cursor.execute("SELECT id, frase, respuesta, pista FROM vocabulario ORDER BY RANDOM() LIMIT 1")
+        self.pregunta_actual = self.cursor.fetchone() # Devuelve una tupla: (id, frase, respuesta, pista)
+        
+        frase = self.pregunta_actual[1]
+        pista = self.pregunta_actual[3]
+        
+        texto_label = f"{frase}"
+        if pista:
+            texto_label += f"\n\n💡 Pista: {pista}"
+            
+        self.label.setText(texto_label)
+        self.label_2.setText("")
+        self.lineEdit.clear()
+        self.lineEdit.setFocus()
+        self.lineEdit.setEnabled(True)
+        self.pushButton.setEnabled(True)
+        
+        self.tiempo_restante = 15
+        self.label_tiempo.setText(f"⏱️ Tiempo: {self.tiempo_restante}s")
+        self.timer_cuenta_atras.start(1000)
+
+    def actualizar_tiempo(self):
+        self.tiempo_restante -= 1
+        self.label_tiempo.setText(f"⏱️ Tiempo: {self.tiempo_restante}s")
+        
+        if self.tiempo_restante <= 0:
+            self.timer_cuenta_atras.stop()
+            self.fallos += 1
+            respuesta_correcta = self.pregunta_actual[2]
+            self.label_2.setText(f"⏰ ¡Tiempo agotado! Era: '{respuesta_correcta}'")
+            self.label_2.setStyleSheet("font-size: 14px; color: red; font-weight: bold;")
+            self.actualizar_marcadores()
+            
+            self.lineEdit.setEnabled(False)
+            self.pushButton.setEnabled(False)
+            QTimer.singleShot(1600, self.cargar_nueva_pregunta)
+
+    def verificar_respuesta(self):
+        if not self.pregunta_actual:
+            return
+            
+        self.timer_cuenta_atras.stop()
+        
+        respuesta_usuario = self.lineEdit.text().strip()
+        respuesta_correcta = self.pregunta_actual[2].strip()
+        
+        if respuesta_usuario.lower() == respuesta_correcta.lower():
+            self.aciertos += 1
+            self.label_2.setText("Richtig! 🎉 ¡Muy bien!")
+            self.label_2.setStyleSheet("font-size: 14px; color: green; font-weight: bold;")
+        else:
+            self.fallos += 1
+            self.label_2.setText(f"Falsch ❌ Era: '{respuesta_correcta}'")
+            self.label_2.setStyleSheet("font-size: 14px; color: red; font-weight: bold;")
+            
+        self.actualizar_marcadores()
+        self.lineEdit.setEnabled(False)
+        self.pushButton.setEnabled(False)
+        
+        QTimer.singleShot(1400, self.cargar_nueva_pregunta)
+
+    def mostrar_fin_partida(self):
+        self.timer_cuenta_atras.stop()
+        self.label.setText(f"🎯 ¡Ronda Finalizada!\nAciertos: {self.aciertos} | Fallos: {self.fallos}")
+        self.label_progreso.setText("¡Completado!")
+        self.label_tiempo.setText("")
+        
+        self.lineEdit.hide()
+        self.pushButton.hide()
+        
+        self.btn_reiniciar.show()
+        self.btn_cerrar.show()
+        
+        self.label_2.setText("¿Qué deseas hacer ahora?")
+        self.label_2.setStyleSheet("font-size: 14px; color: #333; font-weight: bold;")
+
+    def reiniciar_partida(self):
+        self.aciertos = 0
+        self.fallos = 0
+        self.ronda_actual = 0
+        self.actualizar_marcadores()
+        
+        self.btn_reiniciar.hide()
+        self.btn_cerrar.hide()
+        self.lineEdit.show()
+        self.pushButton.show()
+        
+        self.cargar_nueva_pregunta()
+
+    def closeEvent(self, event):
+        # Cerrar la conexión a la base de datos limpiamente al salir de la app
+        if hasattr(self, 'conexion'):
+            self.conexion.close()
+        event.accept()
+
+if __name__ == '__main__':
+    app = QtWidgets.QApplication(sys.argv)
+    ventana = QuizAleman()
+    ventana.show()
+    sys.exit(app.exec())
+
+```
+
+---
+
+### ¿Qué acabas de integrar?
+
+* **Motor SQL nativo:** Usamos `sqlite3` de Python para conectarnos a una base de datos embebida (`vocabulario.db`).
+* **Sentencias DDL y DML automáticas:** El script valida si la tabla existe (`CREATE TABLE IF NOT EXISTS`) y si está vacía (`COUNT(*)`), insertando un set robusto de frases de gramática alemana de nivel A2 automáticamente.
+* **Selección aleatoria optimizada por motor:** En lugar de cargar todo un array en memoria como hacíamos con el JSON, dejamos que SQLite haga el trabajo pesado de mezclar y seleccionar mediante `ORDER BY RANDOM() LIMIT 1`.
+
+Pruébalo ejecutando `python main.py` en tu terminal. Verás que arranca perfecto, genera su propia base de datos y te lanza las preguntas directamente desde SQL. ¡Dime qué tal va!
