@@ -16,8 +16,13 @@ A custom desktop application built to combine **Multiplatform Application Develo
 - **GUI Framework:** PyQt6
 - **Database:** SQLite3
 
-## 💻 Installation & Running
+## 📁 Project Structure
 
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/tu-usuario/nombre-de-tu-repo.git](https://github.com/tu-usuario/nombre-de-tu-repo.git)
+```text
+german-quiz-app/
+│
+├── main.py              # Entry point of the application
+├── database.db          # SQLite local database
+├── ui/                  # Qt Designer UI files / compiled modules
+├── assets/              # Icons, styles, or supplementary media
+└── requirements.txt     # Python dependencies
